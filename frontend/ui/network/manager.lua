@@ -589,15 +589,16 @@ end
 --       it will just attempt to re-connect, *without* running the callback.
 -- c.f., ReaderWikipedia:onShowWikipediaLookup @ frontend/apps/reader/modules/readerwikipedia.lua
 function NetworkMgr:runWhenOnline(callback)
-    if self:isOnline() then
-        callback()
-    else
-        --- @note: Avoid infinite recursion, beforeWifiAction only guarantees isConnected, not isOnline.
-        if not self:isConnected() then
-            self:beforeWifiAction(callback)
+    if self:isConnected() then
+        if self:isOnline() then
+            callback()
         else
+            --- @note: Avoid infinite recursion, beforeWifiAction only guarantees isConnected, not isOnline.
             self:beforeWifiAction()
         end
+    else
+        --- @note: Skip isOnline check if !isConnected, would break networking on PocketBook otherwise.
+        self:beforeWifiAction(callback)
     end
 end
 
@@ -618,13 +619,13 @@ end
 --       it will just attempt to re-connect, *without* running the callback.
 -- c.f., ReaderWikipedia:lookupWikipedia @ frontend/apps/reader/modules/readerwikipedia.lua
 function NetworkMgr:willRerunWhenOnline(callback)
-    if not self:isOnline() then
+    if not self:isConnected() then
+        --- @note: Skip isOnline check if !isConnected, would break networking on PocketBook otherwise.
+        self:beforeWifiAction(callback)
+        return true
+    elseif not self:isOnline() then
         --- @note: Avoid infinite recursion, beforeWifiAction only guarantees isConnected, not isOnline.
-        if not self:isConnected() then
-            self:beforeWifiAction(callback)
-        else
-            self:beforeWifiAction()
-        end
+        self:beforeWifiAction()
         return true
     end
 
@@ -644,7 +645,7 @@ end
 
 -- And this one is for when you absolutely *need* to block until we're online to run something (e.g., because it runs in a finalizer).
 function NetworkMgr:goOnlineToRun(callback)
-    if self:isOnline() then
+    if self:isConnected() and self:isOnline() then
         callback()
         return true
     end

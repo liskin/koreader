@@ -1160,7 +1160,7 @@ function Wallabag:saveWBSettings(setting)
 end
 
 function Wallabag:onAddWallabagArticle(article_url)
-    if not NetworkMgr:isOnline() then
+    if not NetworkMgr:isConnected() or not NetworkMgr:isOnline() then
         self:addToDownloadQueue(article_url)
         UIManager:show(InfoMessage:new{
             text = T(_("Article added to download queue:\n%1"), BD.url(article_url)),
