@@ -541,7 +541,7 @@ function BookMapRow:init()
             end
         end
         -- Indicator for pinned page
-        if page == self.pinned_page then
+        if page == self.pinned_page and not self.clutter_free_mode then
             local x, y = self:getIndicatorXY(page, self.bookmarked_pages[page])
             table.insert(self.indicators, {
                 c = 0xF435, -- pin
@@ -551,7 +551,7 @@ function BookMapRow:init()
             })
         end
         -- Indicator for previous locations
-        if self.previous_locations[page] and page ~= self.cur_page then
+        if self.previous_locations[page] and page ~= self.cur_page and not self.clutter_free_mode then
             local x, y = self:getIndicatorXY(page, self.bookmarked_pages[page] or page == self.pinned_page)
             local num = math.min(self.previous_locations[page], 20)
             table.insert(self.indicators, {
@@ -560,7 +560,7 @@ function BookMapRow:init()
             })
         end
         -- Indicator for next locations
-        if self.next_locations[page] and page ~= self.cur_page then
+        if self.next_locations[page] and page ~= self.cur_page and not self.clutter_free_mode then
             local x, y = self:getIndicatorXY(page, self.bookmarked_pages[page] or page == self.pinned_page)
             local num = math.min(self.next_locations[page], 20)
             table.insert(self.indicators, {
@@ -577,7 +577,7 @@ function BookMapRow:init()
             })
         end
         -- Current page indicator
-        if page == self.cur_page then
+        if page == self.cur_page and not self.clutter_free_mode then
             local x, y = self:getIndicatorXY(page, self.bookmarked_pages[page] or page == self.pinned_page)
             table.insert(self.indicators, {
                 c = 0x25B2, -- black up-pointing triangle
@@ -680,6 +680,8 @@ local BookMapWidget = FocusManager:extend{
     extra_symbols_pages = nil,
     -- Restricted mode, as initial view (all on one screen), but allowing chapter levels changes
     overview_mode = false,
+    -- Clutter-free mode - hide page numbers and most indicators
+    clutter_free_mode = false,
 
     -- Border around focused items (page slots, chapter titles) on non-touch devices
     -- (this needs to be wider than BookMapRow.toc_span_border or they won't show)
@@ -778,7 +780,11 @@ function BookMapWidget:init()
     -- page number on the left space), and each BookMapRow will have itself some
     -- blank space at bottom below page slots (where we may put hanging markers
     -- for current page and bookmark/highlights)
-    self.scrollbar_width = ScrollableContainer:getScrollbarWidth()
+    if self.clutter_free_mode then
+        self.scrollbar_width = 0
+    else
+        self.scrollbar_width = ScrollableContainer:getScrollbarWidth()
+    end
     self.row_width = self.dimen.w - self.scrollbar_width
     self.row_left_spacing = self.scrollbar_width
     self.swipe_hint_bar_width = Screen:scaleBySize(6)
@@ -1288,6 +1294,7 @@ function BookMapWidget:update()
             enable_focus_navigation = self.enable_focus_navigation,
             focus_nav_page = self.focus_page,
             focus_nav_border = self.focus_nav_border,
+            clutter_free_mode = self.clutter_free_mode,
         }
         table.insert(self.vgroup, row)
         if self.enable_focus_navigation then

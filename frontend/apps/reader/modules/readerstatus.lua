@@ -132,6 +132,7 @@ function ReaderStatus:onEndOfBook()
                 ui = self.ui,
                 dimen = Geom:new{ w = map_width, h = map_height },
                 overview_mode = true,
+                clutter_free_mode = true,
             }
             book_map.not_focusable = true
             button_dialog:addWidget(book_map)
