@@ -67,8 +67,8 @@ function ReaderStatus:onEndOfBook()
         end
         local title = _("You've reached the end of the document.\nWhat would you like to do?")
         if todo_count > 0 then
-            title = title .. "\n" .. T(N_("You have 1 bookmark/highlight with a note containing "todo".",
-                "You have %1 bookmarks/highlights with notes containing "todo".", todo_count), todo_count)
+            title = title .. "\n" .. T(N_('You have 1 bookmark/highlight with a note containing "todo".',
+                'You have %1 bookmarks/highlights with notes containing "todo".', todo_count), todo_count)
         end
         local button_dialog
         local buttons = {
