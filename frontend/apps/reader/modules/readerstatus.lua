@@ -7,6 +7,8 @@ local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local util = require("util")
 local _ = require("gettext")
+local N_ = _.ngettext
+local T = require("ffi/util").template
 
 local ReaderStatus = WidgetContainer:extend{
 }
@@ -57,6 +59,17 @@ function ReaderStatus:onEndOfBook()
     local settings = G_reader_settings:readSetting("end_document_action") or "pop-up"
     local top_widget = UIManager:getTopmostVisibleWidget() or {}
     if settings == "pop-up" and top_widget.name ~= "end_document" then
+        local todo_count = 0
+        for _, annotation in ipairs(self.ui.annotation.annotations) do
+            if annotation.note and annotation.note:lower():find("todo", 1, true) then
+                todo_count = todo_count + 1
+            end
+        end
+        local title = _("You've reached the end of the document.\nWhat would you like to do?")
+        if todo_count > 0 then
+            title = title .. "\n" .. T(N_("You have 1 bookmark/highlight with a note containing "todo".",
+                "You have %1 bookmarks/highlights with notes containing "todo".", todo_count), todo_count)
+        end
         local button_dialog
         local buttons = {
             {
@@ -118,7 +131,7 @@ function ReaderStatus:onEndOfBook()
         }
         button_dialog = ButtonDialog:new{
             name = "end_document",
-            title = _("You've reached the end of the document.\nWhat would you like to do?"),
+            title = title,
             title_align = "center",
             buttons = buttons,
         }
