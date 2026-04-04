@@ -60,7 +60,7 @@ function ReaderStatus:onEndOfBook()
     local top_widget = UIManager:getTopmostVisibleWidget() or {}
     if settings == "pop-up" and top_widget.name ~= "end_document" then
         local todo_count = 0
-        for _, annotation in ipairs(self.ui.annotation.annotations) do
+        for _, annotation in ipairs(self.ui.annotation.annotations or {}) do
             if annotation.note and annotation.note:lower():find("todo", 1, true) then
                 todo_count = todo_count + 1
             end
