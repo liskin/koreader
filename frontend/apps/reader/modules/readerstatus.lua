@@ -121,7 +121,21 @@ function ReaderStatus:onEndOfBook()
             title = _("You've reached the end of the document.\nWhat would you like to do?"),
             title_align = "center",
             buttons = buttons,
+            width = math.floor(Device.screen:getWidth() * 0.8),
         }
+        if G_reader_settings:isTrue("end_document_show_book_map") then
+            local BookMapWidget = require("ui/widget/bookmapwidget")
+            local Geom = require("ui/geometry")
+            local map_width = button_dialog:getAddedWidgetAvailableWidth()
+            local map_height = math.floor(Device.screen:getHeight() * 0.5)
+            local book_map = BookMapWidget:new{
+                ui = self.ui,
+                dimen = Geom:new{ w = map_width, h = map_height },
+                overview_mode = true,
+            }
+            book_map.not_focusable = true
+            button_dialog:addWidget(book_map)
+        end
         UIManager:show(button_dialog)
     elseif settings == "book_status" then
         self:onShowBookStatus()

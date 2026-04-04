@@ -694,75 +694,83 @@ function BookMapWidget:init()
     -- so we should avoid allocating memory to huge data structures.
     self.enable_focus_navigation = not Device:isTouchDevice() and Device:hasDPad() and Device:useDPadAsActionKeys()
 
-    if self.ui.view:shouldInvertBiDiLayoutMirroring() then
-        BD.invert()
-    end
+    -- Detect embedded mode: caller provided a dimen to constrain the widget
+    -- (e.g. when embedding in a ButtonDialog). In this mode there is no title
+    -- bar, no full-screen coverage, and no gesture/key event registration.
+    local is_embedded = self.dimen ~= nil
+    self.is_embedded = is_embedded
 
-    -- Compute non-settings-dependant sizes and options
-    self.dimen = Geom:new{
-        x = 0,
-        y = 0,
-        w = Screen:getWidth(),
-        h = Screen:getHeight(),
-    }
-    self.covers_fullscreen = true -- hint for UIManager:_repaint()
+    if not is_embedded then
+        if self.ui.view:shouldInvertBiDiLayoutMirroring() then
+            BD.invert()
+        end
 
-    self:registerKeyEvents()
-    if Device:isTouchDevice() then
-        self.ges_events = {
-            Swipe = {
-                GestureRange:new{
-                    ges = "swipe",
-                    range = self.dimen,
-                }
-            },
-            MultiSwipe = {
-                GestureRange:new{
-                    ges = "multiswipe",
-                    range = self.dimen,
-                }
-            },
-            Pan = { -- (for mousewheel scrolling support)
-                GestureRange:new{
-                    ges = "pan",
-                    range = self.dimen,
-                }
-            },
-            Tap = {
-                GestureRange:new{
-                    ges = "tap",
-                    range = self.dimen,
-                }
-            },
-            Pinch = {
-                GestureRange:new{
-                    ges = "pinch",
-                    range = self.dimen,
-                }
-            },
-            Spread = {
-                GestureRange:new{
-                    ges = "spread",
-                    range = self.dimen,
-                }
-            },
+        -- Compute non-settings-dependant sizes and options
+        self.dimen = Geom:new{
+            x = 0,
+            y = 0,
+            w = Screen:getWidth(),
+            h = Screen:getHeight(),
         }
-        -- No need for any long-press handler: page slots may be small and we can't
-        -- really target a precise page slot with our fat finger above it...
-        -- Tap will zoom the zone in a PageBrowserWidget where things will be clearer
-        -- and allow us to get where we want.
-        -- (Also, handling "hold" is a bit more complicated when we have our
-        -- ScrollableContainer that would also like to handle it.)
-    else
-        -- NT: needed for selection
-        self.ges_events = {
-            Tap = {
-                GestureRange:new{
-                    ges = "tap",
-                    range = self.dimen,
+        self.covers_fullscreen = true -- hint for UIManager:_repaint()
+
+        self:registerKeyEvents()
+        if Device:isTouchDevice() then
+            self.ges_events = {
+                Swipe = {
+                    GestureRange:new{
+                        ges = "swipe",
+                        range = self.dimen,
+                    }
+                },
+                MultiSwipe = {
+                    GestureRange:new{
+                        ges = "multiswipe",
+                        range = self.dimen,
+                    }
+                },
+                Pan = { -- (for mousewheel scrolling support)
+                    GestureRange:new{
+                        ges = "pan",
+                        range = self.dimen,
+                    }
+                },
+                Tap = {
+                    GestureRange:new{
+                        ges = "tap",
+                        range = self.dimen,
+                    }
+                },
+                Pinch = {
+                    GestureRange:new{
+                        ges = "pinch",
+                        range = self.dimen,
+                    }
+                },
+                Spread = {
+                    GestureRange:new{
+                        ges = "spread",
+                        range = self.dimen,
+                    }
+                },
+            }
+            -- No need for any long-press handler: page slots may be small and we can't
+            -- really target a precise page slot with our fat finger above it...
+            -- Tap will zoom the zone in a PageBrowserWidget where things will be clearer
+            -- and allow us to get where we want.
+            -- (Also, handling "hold" is a bit more complicated when we have our
+            -- ScrollableContainer that would also like to handle it.)
+        else
+            -- NT: needed for selection
+            self.ges_events = {
+                Tap = {
+                    GestureRange:new{
+                        ges = "tap",
+                        range = self.dimen,
+                    }
                 }
             }
-        }
+        end
     end
 
     -- No real need for any explicit edge and inter-row padding:
@@ -775,21 +783,26 @@ function BookMapWidget:init()
     self.row_left_spacing = self.scrollbar_width
     self.swipe_hint_bar_width = Screen:scaleBySize(6)
 
-    local title = self.overview_mode and _("Book map (overview)") or _("Book map")
-    self.title_bar = TitleBar:new{
-        fullscreen = true,
-        title = title,
-        left_icon = "appbar.menu",
-        left_icon_tap_callback = function() self:onShowBookMapMenu() end,
-        left_icon_hold_callback = not self.overview_mode and function()
-            self:toggleDefaultSettings() -- toggle between user settings and default view
-        end,
-        close_callback = function() self:onClose() end,
-        close_hold_callback = function() self:onClose(true) end,
-        show_parent = self,
-    }
-    self.title_bar_h = self.title_bar:getHeight()
-    self.crop_height = self.dimen.h - self.title_bar_h - Size.margin.small - self.swipe_hint_bar_width
+    if not is_embedded then
+        local title = self.overview_mode and _("Book map (overview)") or _("Book map")
+        self.title_bar = TitleBar:new{
+            fullscreen = true,
+            title = title,
+            left_icon = "appbar.menu",
+            left_icon_tap_callback = function() self:onShowBookMapMenu() end,
+            left_icon_hold_callback = not self.overview_mode and function()
+                self:toggleDefaultSettings() -- toggle between user settings and default view
+            end,
+            close_callback = function() self:onClose() end,
+            close_hold_callback = function() self:onClose(true) end,
+            show_parent = self,
+        }
+        self.title_bar_h = self.title_bar:getHeight()
+        self.crop_height = self.dimen.h - self.title_bar_h - Size.margin.small - self.swipe_hint_bar_width
+    else
+        self.title_bar_h = 0
+        self.crop_height = self.dimen.h
+    end
 
     -- Guess grid TOC span height from its font size
     -- (it feels this font size does not need to be configurable: too large and
@@ -841,6 +854,16 @@ function BookMapWidget:init()
     self.cropping_widget.onScrollPageUp = function() return false end
     self.cropping_widget.onScrollPageDown = function() return false end
 
+    local inner_content
+    if not is_embedded then
+        inner_content = VerticalGroup:new{
+            align = "center",
+            self.title_bar,
+            self.cropping_widget,
+        }
+    else
+        inner_content = self.cropping_widget
+    end
     self[1] = FrameContainer:new{
         width = self.dimen.w,
         height = self.dimen.h,
@@ -848,11 +871,7 @@ function BookMapWidget:init()
         margin = 0,
         bordersize = 0,
         background = Blitbuffer.COLOR_WHITE,
-        VerticalGroup:new{
-            align = "center",
-            self.title_bar,
-            self.cropping_widget,
-        }
+        inner_content,
     }
 
     -- Note: some of these could be cached in ReaderThumbnail, and discarded/updated
@@ -2081,10 +2100,13 @@ end
 function BookMapWidget:paintTo(bb, x, y)
     -- Paint regular sub widgets the classic way
     InputContainer.paintTo(self, bb, x, y)
-    -- And explicitly paint "swipe" hints along the left and bottom borders
-    self:paintLeftVerticalSwipeHint(bb, x, y)
-    if not self.overview_mode then
-        self:paintBottomHorizontalSwipeHint(bb, x, y)
+    -- Swipe hints are only meaningful in standalone (non-embedded) mode
+    if not self.is_embedded then
+        -- And explicitly paint "swipe" hints along the left and bottom borders
+        self:paintLeftVerticalSwipeHint(bb, x, y)
+        if not self.overview_mode then
+            self:paintBottomHorizontalSwipeHint(bb, x, y)
+        end
     end
     self:updateFocus()
 end
