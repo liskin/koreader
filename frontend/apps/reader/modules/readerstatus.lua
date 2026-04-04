@@ -2,6 +2,7 @@ local BookList = require("ui/widget/booklist")
 local BookStatusWidget = require("ui/widget/bookstatuswidget")
 local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
+local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -122,6 +123,9 @@ function ReaderStatus:onEndOfBook()
             title_align = "center",
             buttons = buttons,
         }
+        if G_reader_settings:isTrue("end_document_show_book_map") then
+            self.ui:handleEvent(Event:new("ShowBookMap"))
+        end
         UIManager:show(button_dialog)
     elseif settings == "book_status" then
         self:onShowBookStatus()

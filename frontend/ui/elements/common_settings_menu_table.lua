@@ -702,6 +702,19 @@ common_settings.document_end_action = {
             end,
             separator = true,
         },
+        {
+            text = _("Show book map with popup dialog"),
+            checked_func = function()
+                return G_reader_settings:isTrue("end_document_show_book_map")
+            end,
+            enabled_func = function()
+                return G_reader_settings:readSetting("end_document_action", "pop-up") == "pop-up"
+            end,
+            callback = function()
+                G_reader_settings:flipNilOrFalse("end_document_show_book_map")
+            end,
+            separator = true,
+        },
         genGenericMenuEntry(_("Ask with popup dialog"), "end_document_action", "pop-up", "pop-up"),
         genGenericMenuEntry(_("Do nothing"), "end_document_action", "nothing", nil),
         genGenericMenuEntry(_("Book status"), "end_document_action", "book_status", nil),
