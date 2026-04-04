@@ -1,0 +1,1 @@
+../../frontend/ui/widget/bookmapwidget.lua
