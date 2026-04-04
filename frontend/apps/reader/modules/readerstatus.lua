@@ -2,7 +2,6 @@ local BookList = require("ui/widget/booklist")
 local BookStatusWidget = require("ui/widget/bookstatuswidget")
 local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
-local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -124,7 +123,19 @@ function ReaderStatus:onEndOfBook()
             buttons = buttons,
         }
         if G_reader_settings:isTrue("end_document_show_book_map") then
-            self.ui:handleEvent(Event:new("ShowBookMap"))
+            local BookMapWidget = require("ui/widget/bookmapwidget")
+            local Geom = require("ui/geometry")
+            local map_width = button_dialog:getAddedWidgetAvailableWidth()
+            -- Use ~1/3 of screen height so there's room for the dialog title and buttons
+            local map_height = math.floor(Device.screen:getHeight() / 3)
+            local book_map = BookMapWidget:new{
+                ui = self.ui,
+                dimen = Geom:new{ w = map_width, h = map_height },
+                overview_mode = true,
+            }
+            book_map.not_focusable = true
+            book_map.separator = true
+            button_dialog:addWidget(book_map)
         end
         UIManager:show(button_dialog)
     elseif settings == "book_status" then
