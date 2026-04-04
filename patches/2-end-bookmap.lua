@@ -2,6 +2,7 @@ local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local Geom = require("ui/geometry")
 local ReaderUI = require("apps/reader/readerui")
+local Size = require("ui/size")
 
 local patch_dir = require("datastorage"):getDataDir() .. "/patches"
 local package_path = package.path
@@ -17,7 +18,13 @@ ButtonDialog.new = (function(orig)
             ret:reinit()
 
             local map_width = ret:getAddedWidgetAvailableWidth()
-            local map_height = math.floor(Device.screen:getHeight() * 0.6)
+            local map_height = Device.screen:getHeight()
+                - ret.title_group:getSize().h
+                - ret.buttontable:getSize().h
+                - 2*Size.padding.buttontable
+                - 2*Size.margin.default
+                - Size.padding.default
+                - Size.line.medium
             local book_map = BookMapWidget:new{
                 ui = ReaderUI.instance,
                 dimen = Geom:new{ w = map_width, h = map_height },

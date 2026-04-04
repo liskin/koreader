@@ -126,8 +126,15 @@ function ReaderStatus:onEndOfBook()
         if G_reader_settings:isTrue("end_document_show_book_map") then
             local BookMapWidget = require("ui/widget/bookmapwidget")
             local Geom = require("ui/geometry")
+            local Size = require("ui/size")
             local map_width = button_dialog:getAddedWidgetAvailableWidth()
-            local map_height = math.floor(Device.screen:getHeight() * 0.6)
+            local map_height = Device.screen:getHeight()
+                - button_dialog.title_group:getSize().h
+                - button_dialog.buttontable:getSize().h
+                - 2*Size.padding.buttontable
+                - 2*Size.margin.default
+                - Size.padding.default
+                - Size.line.medium
             local book_map = BookMapWidget:new{
                 ui = self.ui,
                 dimen = Geom:new{ w = map_width, h = map_height },
