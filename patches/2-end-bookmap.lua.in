@@ -1,0 +1,38 @@
+local ButtonDialog = require("ui/widget/buttondialog")
+local Device = require("device")
+local Geom = require("ui/geometry")
+local ReaderUI = require("apps/reader/readerui")
+local Size = require("ui/size")
+
+local BookMapWidget = (function()
+-- INCLUDE_BOOKMAPWIDGET
+end)()
+
+ButtonDialog.new = (function(orig)
+    return function(...)
+        local ret = orig(...)
+        if ret.name == "end_document" then
+            ret.width = math.floor(Device.screen:getWidth() * 0.9)
+            ret:reinit()
+
+            local map_width = ret:getAddedWidgetAvailableWidth()
+            local map_height = Device.screen:getHeight()
+                - ret.title_group:getSize().h
+                - ret.buttontable:getSize().h
+                - 2*Size.padding.buttontable
+                - 2*Size.margin.default
+                - Size.padding.default
+                - Size.line.medium
+            local book_map = BookMapWidget:new{
+                ui = ReaderUI.instance,
+                dimen = Geom:new{ w = map_width, h = map_height },
+                overview_mode = true,
+                clutter_free_mode = true,
+            }
+            book_map.not_focusable = true
+
+            ret:addWidget(book_map)
+        end
+        return ret
+    end
+end)(ButtonDialog.new)
