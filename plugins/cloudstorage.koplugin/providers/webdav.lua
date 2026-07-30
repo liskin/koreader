@@ -102,7 +102,7 @@ function WebDavApi.listFolder(address, user, pass, folder_path, include_folders)
         local item_fullpath = util.urlDecode(item:match("<[^:]*:href[^>]*>(.*)</[^:]*:href>"))
         local item_name = ffiUtil.basename(util.htmlEntitiesToUtf8(item_fullpath))
         local is_not_collection = item:find("<[^:]*:resourcetype%s*/>") or
-                                  item:find("<[^:]*:resourcetype></[^:]*:resourcetype>")
+                                  item:find("<[^:]*:resourcetype>%s*</[^:]*:resourcetype>")
         if is_not_collection then
             if show_unsupported or DocumentRegistry:hasProvider(item_name) then
                 local file_size = tonumber(item:match("<[^:]*:getcontentlength[^>]*>(%d+)</[^:]*:getcontentlength>"))
@@ -123,7 +123,7 @@ function WebDavApi.listFolder(address, user, pass, folder_path, include_folders)
                     mandatory = mandatory,
                 })
             end
-        elseif item:find("<[^:]*:collection[^<]*/>") then
+        elseif item:find("<[^:]*:collection[^<]*/>") or item:find("<[^:]*:collection>%s*</[^:]*:collection>") then
             if include_folders then
                 local is_not_current_dir = WebDavApi.trim_slashes(item_fullpath) ~= webdav_url_path
                 if is_not_current_dir then
@@ -163,6 +163,12 @@ end
 
 function WebDavApi.uploadFile(file_url, user, pass, local_path, etag)
     socketutil:set_timeout(socketutil.FILE_BLOCK_TIMEOUT, socketutil.FILE_TOTAL_TIMEOUT)
+    -- If-Match uses strong comparison (RFC 7232 §3.1), so a weak validator
+    -- (W/"…", returned e.g. for gzip-compressed responses) can never match and
+    -- would 412 forever. Strip the weak prefix; proxies keep the same value.
+    if type(etag) == "string" then
+        etag = etag:gsub("^%s*[Ww]/", "")
+    end
     local code, _, status = socket.skip(1, http.request{
         url      = file_url,
         method   = "PUT",
@@ -265,11 +271,11 @@ The start folder is appended to the server path.]])
     local item = server_idx and WebDav.base.servers[server_idx] or { type = WebDav.type }
     local settings_dialog
     settings_dialog = MultiInputDialog:new{
-        title = _("WebDAV cloud storage"),
+        title = _("WebDAV server settings"),
         fields = {
             {
                 text = item.name,
-                hint = _("Cloud storage displayed name"),
+                hint = _("Name"),
             },
             {
                 text = item.address,

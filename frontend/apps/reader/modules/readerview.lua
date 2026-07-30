@@ -86,6 +86,7 @@ function ReaderView:init()
         zoom = 1.0,
         rotation = 0,
         gamma = 1.0,
+        saturation = 1.0,
         offset = nil,
         bbox = nil,
     }
@@ -94,12 +95,11 @@ function ReaderView:init()
         visible_boxes = nil, -- array; visible boxes in the current page, used by ReaderHighlight:onTap()
         lighten_factor = G_reader_settings:readSetting("highlight_lighten_factor", 0.2),
         note_mark = G_reader_settings:readSetting("highlight_note_marker"),
-        temp_drawer = "invert",
+        temp_drawer = "lighten",
         temp = {},
         saved_drawer = "lighten",
         -- NOTE: Unfortunately, yellow tends to look like absolute ass on Kaleido panels...
         saved_color = Screen:isColorEnabled() and "yellow" or "gray",
-        indicator = nil, -- geom: non-touch highlight position indicator: {x = 50, y=50}
     }
     self.page_states = {}
     self.page_gap = {
@@ -218,7 +218,7 @@ function ReaderView:paintTo(bb, x, y)
         if self.page_overlap_style == "dim" then
             -- NOTE: "dim", as in make black text fainter, e.g., lighten the rect
             bb:lightenRect(self.dim_area.x, self.dim_area.y, self.dim_area.w, self.dim_area.h)
-        else
+        elseif self.page_overlap_style ~= "none" then
             -- Paint at the proper y origin depending on whether we paged forward (dim_area.y == 0) or backward
             local paint_y = self.dim_area.y == 0 and self.dim_area.h or self.dim_area.y
             if self.page_overlap_style == "arrow" then
@@ -240,12 +240,8 @@ function ReaderView:paintTo(bb, x, y)
         colorful = self:drawSavedHighlight(bb, x, y)
     end
     -- draw temporary highlight
-    if self.highlight.temp then
+    if self.highlight.temp and next(self.highlight.temp) then
         self:drawTempHighlight(bb, x, y)
-    end
-    -- draw highlight position indicator for non-touch
-    if self.highlight.indicator then
-        self:drawHighlightIndicator(bb, x, y)
     end
     -- paint dogear
     if self.dogear_visible then
@@ -384,7 +380,8 @@ function ReaderView:drawScrollPages(bb, x, y)
             state.page,
             state.zoom,
             state.rotation,
-            state.gamma)
+            state.gamma,
+            state.saturation)
         pos.y = pos.y + state.visible_area.h
         -- draw page gap if not the last part
         if page ~= #self.page_states then
@@ -458,7 +455,8 @@ function ReaderView:drawSinglePage(bb, x, y)
         self.state.page,
         self.state.zoom,
         self.state.rotation,
-        self.state.gamma)
+        self.state.gamma,
+        self.state.saturation)
     UIManager:nextTick(self.emitHintPageEvent)
 end
 
@@ -504,29 +502,15 @@ function ReaderView:drawScrollView(bb, x, y)
         self.state.pos)
 end
 
-function ReaderView:drawHighlightIndicator(bb, x, y)
-    local rect = self.highlight.indicator
-    -- paint big cross line +
-    bb:paintRect(
-        rect.x,
-        rect.y + rect.h / 2 - Size.border.thick / 2,
-        rect.w,
-        Size.border.thick
-    )
-    bb:paintRect(
-        rect.x + rect.w / 2 - Size.border.thick / 2,
-        rect.y,
-        Size.border.thick,
-        rect.h
-    )
-end
-
 function ReaderView:drawTempHighlight(bb, x, y)
+    local color = self.highlight.saved_drawer ~= "invert"
+        and G_reader_settings:isTrue("highlight_selection_use_highlight_color")
+        and Blitbuffer.colorFromName(self.highlight.saved_color) or nil
     for page, boxes in pairs(self.highlight.temp) do
         for i = 1, #boxes do
             local rect = self:pageToScreenTransform(page, boxes[i])
             if rect then
-                self:drawHighlightRect(bb, x, y, rect, self.highlight.temp_drawer)
+                self:drawHighlightRect(bb, x, y, rect, self.highlight.temp_drawer, color)
             end
         end
     end
@@ -682,15 +666,17 @@ function ReaderView:drawHighlightRect(bb, _x, _y, rect, drawer, color, draw_note
         end
     end
     if drawer == "lighten" then
+        local lighten_factor = self.highlight.temp and next(self.highlight.temp)
+            and (G_reader_settings:readSetting("highlight_selection_lighten_factor") or 0.2) or self.highlight.lighten_factor
         if not color then
-            bb:darkenRect(x, y, w, h, self.highlight.lighten_factor)
+            bb:darkenRect(x, y, w, h, lighten_factor)
         else
             if bb:getInverse() == 1 then
                 -- MUL doesn't really work on a black background, so, switch to OVER if we're in software nightmode...
                 -- NOTE: If we do *not* invert the color here, it *will* get inverted by the blitter given that the target bb is inverted.
                 --       While not particularly pretty, this (roughly) matches with hardware nightmode, *and* how MuPDF renders highlights...
                 --       But it's *really* not pretty (https://github.com/koreader/koreader/pull/11044#issuecomment-1902886069), so we'll fix it ;p.
-                local c = Blitbuffer.ColorRGB32(color.r, color.g, color.b, 0xFF * self.highlight.lighten_factor):invert()
+                local c = Blitbuffer.ColorRGB32(color.r, color.g, color.b, 0xFF * lighten_factor):invert()
                 bb:blendRectRGB32(x, y, w, h, c)
             else
                 bb:multiplyRectRGB(x, y, w, h, color)
@@ -703,7 +689,7 @@ function ReaderView:drawHighlightRect(bb, _x, _y, rect, drawer, color, draw_note
         if Blitbuffer.isColor8(color) then
             bb:paintRect(x, y + h - 1, w, Size.line.thick, color)
         else
-            bb:paintRectRGB32(x, y + h - 1, w, Size.line.thick, color)
+            bb:paintRectRGB32(x, y + h - 1, w, Size.line.thick, Screen.night_mode and color:invert() or color)
         end
     elseif drawer == "strikeout" then
         if not color then
@@ -716,7 +702,7 @@ function ReaderView:drawHighlightRect(bb, _x, _y, rect, drawer, color, draw_note
         if Blitbuffer.isColor8(color) then
             bb:paintRect(x, line_y, w, Size.line.medium, color)
         else
-            bb:paintRectRGB32(x, line_y, w, Size.line.medium, color)
+            bb:paintRectRGB32(x, line_y, w, Size.line.medium, Screen.night_mode and color:invert() or color)
         end
     elseif drawer == "invert" then
         bb:invertRect(x, y, w, h)
@@ -740,7 +726,7 @@ function ReaderView:drawHighlightRect(bb, _x, _y, rect, drawer, color, draw_note
                 if Blitbuffer.isColor8(color) then
                     bb:paintRect(note_mark_pos_x, y, self.note_mark_line_w, rect.h, color)
                 else
-                    bb:paintRectRGB32(note_mark_pos_x, y, self.note_mark_line_w, rect.h, color)
+                    bb:paintRectRGB32(note_mark_pos_x, y, self.note_mark_line_w, rect.h, Screen.night_mode and color:invert() or color)
                 end
             elseif self.highlight.note_mark == "sidemark" then
                 if draw_note_mark then
@@ -871,6 +857,7 @@ function ReaderView:getViewContext()
                 zoom = self.state.zoom,
                 rotation = self.state.rotation,
                 gamma = self.state.gamma,
+                saturation = self.state.saturation,
                 offset = self.state.offset:copy(),
                 bbox = self.state.bbox,
             },
@@ -1108,6 +1095,16 @@ function ReaderView:onGammaUpdate(gamma, no_notification)
     end
 end
 
+function ReaderView:onSaturationUpdate(saturation, no_notification)
+    self.state.saturation = saturation
+    if self.page_scroll then
+        self.ui:handleEvent(Event:new("UpdateScrollPageSaturation", saturation))
+    end
+    if not no_notification then
+        Notification:notify(T(_("Saturation set to: %1."), saturation))
+    end
+end
+
 -- For ReaderKOptListener
 function ReaderView:onDitheringUpdate()
     -- Do the device cap checks again, to avoid snafus when sharing configs between devices
@@ -1299,13 +1296,43 @@ function ReaderView:checkAutoSaveSettings()
 end
 
 function ReaderView:isOverlapAllowed()
-    if self.ui.paging then
-        return not self.page_scroll
-            and (self.ui.paging.zoom_mode ~= "page"
-                or (self.ui.paging.zoom_mode == "page" and self.document.configurable.text_wrap == 1))
-            and not self.ui.paging.zoom_mode:find("height")
-    else
+    if self.ui.rolling then
         return self.view_mode ~= "page"
+    end
+    -- paging
+    if self.page_scroll then -- continuous mode
+        return false
+    end
+    if self.ui.paging.zoom_mode == "page" then -- page full
+        return self.document.configurable.text_wrap == 1 -- reflow on
+    end
+    if self.ui.paging.zoom_mode:find("height") then -- page/content fit to height
+        return false
+    end
+    return true
+end
+
+local overlap_styles = { "none", "dim", "arrow", "line", "dashed_line" }
+local overlap_style_texts = { _("No indicator"), _("Gray out"), _("Arrow"), _("Solid line"), _("Dashed line") }
+function ReaderView.getOverlapStyles()
+    return overlap_styles, overlap_style_texts
+end
+
+function ReaderView:onSetOverlapStyle(style, no_notification)
+    if self.page_overlap_style ~= style then
+        self.page_overlap_style = style
+        UIManager:setDirty(self.dialog, "ui")
+        if not no_notification then
+            local index = util.arrayContains(overlap_styles, style)
+            Notification:notify(T(_("Page overlap style set to: %1"), overlap_style_texts[index]))
+        end
+    end
+end
+
+function ReaderView:onCycleOverlapStyle()
+    local index = util.arrayContains(overlap_styles, self.page_overlap_style)
+    if index then
+        self:onSetOverlapStyle(overlap_styles[index + 1] or overlap_styles[1])
     end
 end
 

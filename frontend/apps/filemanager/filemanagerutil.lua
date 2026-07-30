@@ -22,10 +22,14 @@ function filemanagerutil.getDefaultDir()
     return Device.home_dir or "."
 end
 
+function filemanagerutil.getHomeFolder()
+    return G_reader_settings:readSetting("home_dir") or Device.home_dir or "."
+end
+
 function filemanagerutil.abbreviate(path)
     if not path then return "" end
     if G_reader_settings:nilOrTrue("shorten_home_dir") then
-        local home_dir = G_reader_settings:readSetting("home_dir") or filemanagerutil.getDefaultDir()
+        local home_dir = filemanagerutil.getHomeFolder()
         if path == home_dir or path == home_dir .. "/" then
             return _("Home")
         end
@@ -367,7 +371,7 @@ function filemanagerutil.executeScript(file, caller_callback)
     end)
 end
 
-function filemanagerutil.showChooseDialog(title_header, caller_callback, current_path, default_path, file_filter)
+function filemanagerutil.showChooseDialog(title_header, caller_callback, current_path, default_path, file_filter, reset_button)
     local is_file = file_filter and true or false
     local path = current_path or default_path
     local dialog
@@ -382,7 +386,7 @@ function filemanagerutil.showChooseDialog(title_header, caller_callback, current
                             path = ffiUtil.dirname(path)
                         end
                         if lfs.attributes(path, "mode") ~= "directory" then
-                            path = G_reader_settings:readSetting("home_dir") or filemanagerutil.getDefaultDir()
+                            path = filemanagerutil.getHomeFolder()
                         end
                     end
                     local PathChooser = require("ui/widget/pathchooser")
@@ -413,6 +417,18 @@ function filemanagerutil.showChooseDialog(title_header, caller_callback, current
             },
         })
     end
+    if reset_button then
+        table.insert(buttons, {
+            {
+                text = _("Reset"),
+                enabled = current_path and true or false,
+                callback = function()
+                    UIManager:close(dialog)
+                    caller_callback()
+                end,
+            },
+        })
+    end
     local title_value = path and (is_file and BD.filepath(path) or BD.dirpath(path))
                               or _("not set")
     local ButtonDialog = require("ui/widget/buttondialog")
@@ -431,7 +447,7 @@ function filemanagerutil.openFile(ui, file, caller_pre_callback, no_dialog)
         if ui.document then -- Reader
             if ui.document.file ~= file then
                 local DocumentRegistry = require("document/documentregistry")
-                local provider = DocumentRegistry:getProvider(file, true) -- include auxiliary
+                local provider, is_provider_forced = DocumentRegistry:getProvider(file, true) -- include auxiliary
                 if provider and provider.order then -- auxiliary
                     -- keep the currently opened document, open the file over Reader
                     if provider.callback then -- module
@@ -440,7 +456,7 @@ function filemanagerutil.openFile(ui, file, caller_pre_callback, no_dialog)
                         ui[provider.provider]:openFile(file)
                     end
                 else -- document
-                    ui:switchDocument(file)
+                    ui:switchDocument(file, nil, nil, provider, is_provider_forced)
                 end
             end
         else -- FM

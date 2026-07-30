@@ -12,7 +12,7 @@ local util = require("util")
 local _ = require("gettext")
 
 -- Date at which the last migration snippet was added
-local CURRENT_MIGRATION_DATE = 20260306
+local CURRENT_MIGRATION_DATE = 20260623
 
 -- Retrieve the date of the previous migration, if any
 local last_migration_date = G_reader_settings:readSetting("last_migration_date", 0)
@@ -953,6 +953,75 @@ if last_migration_date < 20260306 then
     local Device = require("device")
     if Device:hasScreenKB() and G_reader_settings:hasNot("virtual_keyboard_enabled") then
         G_reader_settings:makeTrue("virtual_keyboard_enabled")
+    end
+end
+
+-- 20260428, Hotkeys plugin: add text_selection to hotkeys_reader defaults
+-- https://github.com/koreader/koreader/pull/14867
+if last_migration_date < 20260428 then
+    logger.info("Performing one-time migration for 20260428")
+
+    local Device = require("device")
+    if Device:hasKeyboard() then
+        local hotkeys_path = ffiUtil.joinPath(DataStorage:getSettingsDir(), "hotkeys.lua")
+        if lfs.attributes(hotkeys_path, "mode") == "file" then
+            local hotkeys_settings = LuaSettings:open(hotkeys_path)
+            if hotkeys_settings.data.hotkeys_reader then
+                hotkeys_settings.data.hotkeys_reader.b = {bookmarks = true}
+                hotkeys_settings.data.hotkeys_reader.h = {text_selection = true}
+                hotkeys_settings.data.hotkeys_reader.t = {toc = true}
+                hotkeys_settings:flush()
+            end
+        end
+    end
+end
+
+-- 20260512, Move HttpInspector plugin settings into one table.
+-- https://github.com/koreader/koreader/pull/15373
+if last_migration_date < 20260512 then
+    logger.info("Performing one-time migration for 20260512")
+
+    local autostart = G_reader_settings:readSetting("httpinspector_autostart")
+    local port = G_reader_settings:readSetting("httpinspector_port")
+    if autostart or port then
+        G_reader_settings:delSetting("httpinspector_autostart")
+        G_reader_settings:delSetting("httpinspector_port")
+        G_reader_settings:saveSetting("httpinspector", {
+            autostart = autostart,
+            port = tonumber(port),
+        })
+    end
+end
+
+-- 20260517, Move BookShortcuts plugin settings into the settings file.
+-- https://github.com/koreader/koreader/pull/15392
+if last_migration_date < 20260517 then
+    logger.info("Performing one-time migration for 20260517")
+
+    local directory_action = G_reader_settings:readSetting("BookShortcuts_directory_action")
+    local recursive_directory = G_reader_settings:readSetting("BookShortcuts_recursive_directory")
+    if directory_action or recursive_directory then
+        G_reader_settings:delSetting("BookShortcuts_directory_action")
+        G_reader_settings:delSetting("BookShortcuts_recursive_directory")
+        local settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/bookshortcuts.lua")
+        settings:saveSetting("settings", {
+            directory_action = directory_action,
+            recursive_directory = recursive_directory,
+        })
+        settings:flush()
+    end
+end
+
+-- 20260623, Move Kosync plugin settings into a separate file
+-- https://github.com/koreader/koreader/pull/15591
+if last_migration_date < 20260623 then
+    logger.info("Performing one-time migration for 20260623")
+    local kosync_setting = G_reader_settings:readSetting("kosync")
+    if kosync_setting then
+        local settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/kosync.lua")
+        settings:saveSetting("settings" , kosync_setting)
+        settings:flush()
+        G_reader_settings:delSetting("kosync")
     end
 end
 

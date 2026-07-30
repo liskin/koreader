@@ -17,7 +17,6 @@ local Dispatcher = require("dispatcher")
 local DocSettings = require("docsettings")
 local DocumentRegistry = require("document/documentregistry")
 local Event = require("ui/event")
-local FFIUtil = require("ffi/util")
 local FileManager = require("apps/filemanager/filemanager")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
@@ -30,6 +29,7 @@ local NetworkMgr = require("ui/network/manager")
 local ReadHistory = require("readhistory")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local ffiUtil = require("ffi/util")
 local filemanagerutil = require("apps/filemanager/filemanagerutil")
 local http = require("socket.http")
 local lfs = require("libs/libkoreader-lfs")
@@ -40,15 +40,17 @@ local socketutil = require("socketutil")
 local util = require("util")
 local _ = require("gettext")
 local N_ = _.ngettext
-local T = FFIUtil.template
+local T = ffiUtil.template
 
 -- constants
 local article_id_prefix = "[w-id_"
 local article_id_postfix = "] "
-local failed, skipped, downloaded = 1, 2, 3
 
 local Wallabag = WidgetContainer:extend{
     name = "wallabag",
+    settings_file = DataStorage:getSettingsDir() .. "/wallabag.lua",
+    wb_settings = nil,
+    updated = nil,
 }
 
 function Wallabag:onDispatcherRegisterActions()
@@ -74,9 +76,9 @@ end
 
 function Wallabag:init()
     self.token_expiry = 0
+    self:loadSettings()
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
-    self.wb_settings = self:readSettings()
 
     -- These settings do not have defaults and need to be set by the user
     self.server_url = self.wb_settings.data.wallabag.server_url
@@ -119,7 +121,7 @@ function Wallabag:init()
     self.archive_directory = self.wb_settings.data.wallabag.archive_directory
     if not self.archive_directory or self.archive_directory == "" then
         if self.directory and self.directory ~= "" then
-            self.archive_directory = FFIUtil.joinPath(self.directory, "archive")
+            self.archive_directory = ffiUtil.joinPath(self.directory, "archive")
         end
     end
 
@@ -146,6 +148,55 @@ function Wallabag:init()
                 end,
             }
         end)
+    end
+end
+
+function Wallabag:loadSettings()
+    if not Wallabag.settings then
+        Wallabag.settings = LuaSettings:open(self.settings_file)
+        if not next(Wallabag.settings.data) then
+            Wallabag.settings.data = { wallabag = {} }
+            self.updated = true -- first run, force flush
+        end
+    end
+    self.wb_settings = Wallabag.settings
+end
+
+function Wallabag:onFlushSettings()
+    if self.updated then
+        self.wb_settings:saveSetting("wallabag", {
+            server_url                    = self.server_url,
+            client_id                     = self.client_id,
+            client_secret                 = self.client_secret,
+            username                      = self.username,
+            password                      = self.password,
+            directory                     = self.directory,
+            filter_tag                    = self.filter_tag,
+            filter_starred                = self.filter_starred,
+            ignore_tags                   = self.ignore_tags,
+            auto_tags                     = self.auto_tags,
+            archive_finished              = self.archive_finished,
+            archive_read                  = self.archive_read,
+            archive_abandoned             = self.archive_abandoned,
+            delete_instead                = self.delete_instead,
+            auto_archive                  = self.auto_archive,
+            sync_remote_archive           = self.sync_remote_archive,
+            articles_per_sync             = self.articles_per_sync,
+            send_review_as_tags           = self.send_review_as_tags,
+            remove_finished_from_history  = self.remove_finished_from_history,
+            remove_read_from_history      = self.remove_read_from_history,
+            remove_abandoned_from_history = self.remove_abandoned_from_history,
+            download_original_document    = self.download_original_document,
+            offline_queue                 = self.offline_queue,
+            use_local_archive             = self.use_local_archive,
+            archive_directory             = self.archive_directory,
+            file_block_timeout            = self.file_block_timeout,
+            file_total_timeout            = self.file_total_timeout,
+            large_block_timeout           = self.large_block_timeout,
+            large_total_timeout           = self.large_total_timeout,
+        })
+        self.wb_settings:flush()
+        self.updated = nil
     end
 end
 
@@ -273,7 +324,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 end,
                                 callback = function()
                                     self.filter_starred = not self.filter_starred
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -284,7 +335,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 end,
                                 callback = function()
                                     self.download_original_document = not self.download_original_document
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                         },
@@ -297,7 +348,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 checked_func = function() return self.archive_finished end,
                                 callback = function()
                                     self.archive_finished = not self.archive_finished
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -305,7 +356,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 checked_func = function() return self.archive_read end,
                                 callback = function()
                                     self.archive_read = not self.archive_read
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -313,7 +364,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 checked_func = function() return self.archive_abandoned end,
                                 callback = function()
                                     self.archive_abandoned = not self.archive_abandoned
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                                 separator = true,
                             },
@@ -322,7 +373,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 checked_func = function() return self.auto_archive end,
                                 callback = function()
                                     self.auto_archive = not self.auto_archive
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -330,7 +381,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 checked_func = function() return self.delete_instead end,
                                 callback = function()
                                     self.delete_instead = not self.delete_instead
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                         },
@@ -343,7 +394,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 checked_func = function() return self.sync_remote_archive end,
                                 callback = function()
                                     self.sync_remote_archive = not self.sync_remote_archive
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -351,7 +402,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 checked_func = function() return self.use_local_archive end,
                                 callback = function()
                                     self.use_local_archive = not self.use_local_archive
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -446,7 +497,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 end,
                                 callback = function()
                                     self.remove_finished_from_history = not self.remove_finished_from_history
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -457,7 +508,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 end,
                                 callback = function()
                                     self.remove_read_from_history = not self.remove_read_from_history
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                             },
                             {
@@ -468,7 +519,7 @@ function Wallabag:addToMainMenu(menu_items)
                                 end,
                                 callback = function()
                                     self.remove_abandoned_from_history = not self.remove_abandoned_from_history
-                                    self:saveSettings()
+                                    self.updated = true
                                 end,
                                 separator = true,
                             },
@@ -501,7 +552,7 @@ function Wallabag:addToMainMenu(menu_items)
                         end,
                         callback = function()
                             self.send_review_as_tags = not self.send_review_as_tags
-                            self:saveSettings()
+                            self.updated = true
                         end,
                         separator = true,
                     },
@@ -737,10 +788,10 @@ function Wallabag:filterIgnoredTags(article_list)
 end
 
 --- Download a single article from the Wallabag server given by id in the article table.
--- @tparam table A list of article tables, see https://doc.wallabag.org/developer/api/methods/#getting-existing-entries
--- @treturn int 1 failed, 2 skipped, 3 downloaded
+-- @tparam table An article table, see https://doc.wallabag.org/developer/api/methods/#getting-existing-entries
+-- @treturn string Full path to local article file.
+-- @treturn nil Failed to download the article.
 function Wallabag:downloadArticle(article)
-    local skip_article = false
     logger.dbg("Wallabag:downloadArticle: article.title =", article.title)
     local title = util.getSafeFilename(article.title, self.directory, 230, 0)
     logger.dbg("Wallabag:downloadArticle: local title =", title)
@@ -782,35 +833,40 @@ function Wallabag:downloadArticle(article)
         end
     end
 
-    local local_path = FFIUtil.joinPath(self.directory, article_id_prefix..article.id..article_id_postfix..title..file_ext)
+    local local_path = ffiUtil.joinPath(self.directory, article_id_prefix..article.id..article_id_postfix..title..file_ext)
     logger.dbg("Wallabag:downloadArticle: downloading", article.id, "to", local_path)
 
-    local attr = lfs.attributes(local_path)
-    if attr then
-        -- File already exists, skip it. Preferably only skip if the date of local file is newer than server's.
-        -- newsdownloader.koplugin has a date parser but it is available only if the plugin is activated.
-        --- @todo find a better solution
-        if self.is_dateparser_available then
-            local server_date = self.dateparser.parse(article.updated_at)
-            if server_date < attr.modification then
-                skip_article = true
-                logger.dbg("Wallabag:downloadArticle: skipping download because local copy at", local_path, "is newer")
+    if self:callAPI("GET", item_url, nil, nil, local_path) then
+        return local_path
+    end
+    return nil
+end
+
+--- Check if we already have the article locally.
+-- @tparam table local_articles Full paths of all articles, keyed by Wallabag ID.
+-- @tparam table remote_article An article table, see https://doc.wallabag.org/developer/api/methods/#getting-existing-entries
+-- @treturn bool Need to download the article
+function Wallabag:needToDownload(local_articles, remote_article)
+    local local_path = local_articles[ tostring(remote_article.id) ]
+    if local_path ~= nil then
+        local attr = lfs.attributes(local_path)
+        if attr then
+            -- File already exists, skip it. Preferably only skip if the date of local file is newer than server's.
+            -- newsdownloader.koplugin has a date parser but it is available only if the plugin is activated.
+            --- @todo find a better solution
+            if self.is_dateparser_available then
+                local server_date = self.dateparser.parse(remote_article.updated_at)
+                if server_date < attr.modification then
+                    logger.dbg("Wallabag:needToDownload: skipping download because local copy at", local_path, "is newer")
+                    return false
+                end
+            else
+                logger.dbg("Wallabag:needToDownload: skipping download because local copy exists at", local_path)
+                return false
             end
-        else
-            skip_article = true
-            logger.dbg("Wallabag:downloadArticle: skipping download because local copy exists at", local_path)
         end
     end
-
-    if skip_article == false then
-        if self:callAPI("GET", item_url, nil, nil, local_path) then
-            return downloaded -- = 3
-        else
-            return failed -- = 1
-        end
-    end
-
-    return skipped -- = 2
+    return true
 end
 
 --- Call the Wallabag API.
@@ -926,8 +982,9 @@ end
 
 --- Add articles from local queue to Wallabag, then download new articles.
 -- If self.auto_archive is true, then local article statuses are uploaded before downloading.
+-- @tparam table local_articles Full paths of all articles, keyed by Wallabag ID.
 -- @treturn bool Whether the synchronization process reached the end (with or without errors)
-function Wallabag:downloadArticles()
+function Wallabag:downloadArticles(local_articles)
     local info = InfoMessage:new{ text = _("Connecting to Wallabag server…") }
     UIManager:show(info)
 
@@ -948,7 +1005,7 @@ function Wallabag:downloadArticles()
     -- Upload local article statuses to remote
     if self.auto_archive == true then
         logger.dbg("Wallabag:downloadArticles: uploading statuses automatically")
-        del_count_remote, del_count_local = self:uploadStatuses()
+        del_count_remote, del_count_local = self:uploadStatuses(local_articles)
     else
         logger.dbg("Wallabag:downloadArticles: skipping status upload")
     end
@@ -978,25 +1035,27 @@ function Wallabag:downloadArticles()
             logger.dbg("Wallabag:downloadArticles: downloading", article.id)
             remote_article_ids[ tostring(article.id) ] = true
 
-            local res = self:downloadArticle(article)
-
-            if res == downloaded then
-                logger.dbg("Wallabag:downloadArticles: downloading", article.id, "succeeded")
-                download_count = download_count + 1
-                info = InfoMessage:new{
-                    text = T(
-                        _("Downloaded article %1 of %2…"),
-                        download_count,
-                        #articles
-                    ),
-                    timeout = 3
-                }
-                UIManager:show(info)
-                UIManager:forceRePaint()
-            elseif res == failed then
-                logger.err("Wallabag:downloadArticles: downloading", article.id, "failed")
-                fail_count = fail_count + 1
-            else -- res == skipped
+            if self:needToDownload(local_articles, article) then
+                local local_path = self:downloadArticle(article)
+                if local_path ~= nil then
+                    logger.dbg("Wallabag:downloadArticles: downloading", article.id, "succeeded")
+                    local_articles[ tostring(article.id) ] = local_path
+                    download_count = download_count + 1
+                    info = InfoMessage:new{
+                        text = T(
+                            _("Downloaded article %1 of %2…"),
+                            download_count,
+                            #articles
+                        ),
+                        timeout = 3
+                    }
+                    UIManager:show(info)
+                    UIManager:forceRePaint()
+                else
+                    logger.err("Wallabag:downloadArticles: downloading", article.id, "failed")
+                    fail_count = fail_count + 1
+                end
+            else -- skipped
                 logger.err("Wallabag:downloadArticles: downloading", article.id, "skipped")
                 skip_count = skip_count + 1
             end
@@ -1005,7 +1064,7 @@ function Wallabag:downloadArticles()
         -- Synchronize remote deletions to local
         if self.sync_remote_archive then
             logger.dbg("Wallabag:downloadArticles: processing remote deletes…")
-            del_count_local = del_count_local + self:processRemoteDeletes(remote_article_ids)
+            del_count_local = del_count_local + self:processRemoteDeletes(local_articles, remote_article_ids)
         else
             logger.dbg("Wallabag:downloadArticles: processing remote deletes skipped")
         end
@@ -1076,7 +1135,7 @@ function Wallabag:uploadQueue(quiet)
         end
 
         self.offline_queue = {}
-        self:saveSettings()
+        self.updated = true
         UIManager:close(info)
     end
 
@@ -1092,9 +1151,10 @@ function Wallabag:uploadQueue(quiet)
 end
 
 --- Compare local IDs with remote_article_ids and delete or archive any that are missing.
+-- @tparam table local_articles Full paths of all articles, keyed by Wallabag ID.
 -- @tparam table remote_article_ids Article IDs of articles downloaded this sync run
 -- @treturn int Number of locally deleted or archived articles
-function Wallabag:processRemoteDeletes(remote_ids)
+function Wallabag:processRemoteDeletes(local_articles, remote_ids)
     logger.dbg("Wallabag:processRemoteDeletes: remote_ids =", remote_ids)
 
     local info = InfoMessage:new{ text = _("Synchronizing remote archivals and deletions…") }
@@ -1103,23 +1163,23 @@ function Wallabag:processRemoteDeletes(remote_ids)
 
     local count = 0
 
-    for entry in lfs.dir(self.directory) do
-        local entry_path = FFIUtil.joinPath(self.directory, entry)
-
-        if entry ~= "." and entry ~= ".." and lfs.attributes(entry_path, "mode") == "file" then
-            local local_id = self:getArticleID(entry_path)
-
-            if not remote_ids[ local_id ] then
-                if self.use_local_archive then
-                    logger.dbg("Wallabag:processRemoteDeletes: archiving", local_id, "at", entry_path)
-                    count = count + self:archiveLocalArticle(entry_path)
-                else
-                    logger.dbg("Wallabag:processRemoteDeletes: deleting", local_id, "at", entry_path)
-                    count = count + self:deleteLocalArticle(entry_path)
+    for local_id, entry_path in pairs(local_articles) do
+        if not remote_ids[ local_id ] then
+            if self.use_local_archive then
+                logger.dbg("Wallabag:processRemoteDeletes: archiving", local_id, "at", entry_path)
+                if self:archiveLocalArticle(entry_path) then
+                    count = count + 1
+                    local_articles[local_id] = nil
                 end
             else
-                logger.dbg("Wallabag:processRemoteDeletes: local_id", local_id, "found in remote_ids; not archiving/deleting")
+                logger.dbg("Wallabag:processRemoteDeletes: deleting", local_id, "at", entry_path)
+                if self:deleteLocalArticle(entry_path) then
+                    count = count + 1
+                    local_articles[local_id] = nil
+                end
             end
+        else
+            logger.dbg("Wallabag:processRemoteDeletes: local_id", local_id, "found in remote_ids; not archiving/deleting")
         end
     end
 
@@ -1145,8 +1205,9 @@ function Wallabag:shouldUploadStatus(entry_path)
 end
 
 --- Archive (or delete) locally finished articles on the Wallabag server.
+-- @tparam table local_articles Full paths of all articles, keyed by Wallabag ID.
 -- @tparam[opt] bool quiet Whether to supress the info message or not
-function Wallabag:uploadStatuses(quiet)
+function Wallabag:uploadStatuses(local_articles, quiet)
     if quiet == nil then
         quiet = true
     end
@@ -1166,46 +1227,48 @@ function Wallabag:uploadStatuses(quiet)
         UIManager:show(info)
         UIManager:forceRePaint()
 
-        for entry in lfs.dir(self.directory) do
-            local skip = false
+        for local_id, entry_path in pairs(local_articles) do
+            if DocSettings:hasSidecarFile(entry_path) then
+                logger.dbg("Wallabag:uploadStatuses:", entry_path, "has sidecar file")
 
-            if entry ~= "." and entry ~= ".." then
-                local entry_path = FFIUtil.joinPath(self.directory, entry)
+                if self.send_review_as_tags then
+                    self:addTagsFromReview(entry_path)
+                end
 
-                if DocSettings:hasSidecarFile(entry_path) then
-                    logger.dbg("Wallabag:uploadStatuses:", entry_path, "has sidecar file")
+                local skip = false
+                if self:shouldUploadStatus(entry_path) then
+                    logger.dbg("Wallabag:uploadStatuses: - archiving/deleting on remote…")
 
-                    if self.send_review_as_tags then
-                        self:addTagsFromReview(entry_path)
+                    if self:archiveArticle(entry_path) then
+                        local_articles[local_id] = nil
+                        count_remote = count_remote + 1
+                        logger.dbg("Wallabag:uploadStatuses: - archived/deleted on remote")
+                    else
+                        logger.warn("Wallabag:uploadStatuses: - could not archive/delete on remote")
+                        skip = true
                     end
 
-                    if self:shouldUploadStatus(entry_path) then
-                        logger.dbg("Wallabag:uploadStatuses: - archiving/deleting on remote…")
-
-                        if self:archiveArticle(entry_path) then
-                            count_remote = count_remote + 1
-                            logger.dbg("Wallabag:uploadStatuses: - archived/deleted on remote")
+                    if skip then
+                        logger.dbg("Wallabag:uploadStatuses: - skipping local archiving/deleting")
+                    else
+                        if self.use_local_archive then
+                            logger.dbg("Wallabag:uploadStatuses: - archiving locally as well")
+                            if self:archiveLocalArticle(entry_path) then
+                                local_articles[local_id] = nil
+                                count_local = count_local + 1
+                            end
                         else
-                            logger.warn("Wallabag:uploadStatuses: - could not archive/delete on remote")
-                            skip = true
-                        end
-
-                        if skip then
-                            logger.dbg("Wallabag:uploadStatuses: - skipping local archiving/deleting")
-                        else
-                            if self.use_local_archive then
-                                logger.dbg("Wallabag:uploadStatuses: - archiving locally as well")
-                                count_local = count_local + self:archiveLocalArticle(entry_path)
-                            else
-                                logger.dbg("Wallabag:uploadStatuses: - deleting locally as well")
-                                count_local = count_local + self:deleteLocalArticle(entry_path)
-                            end -- if use local archive
-                        end -- if not skip
-                    else -- not shouldUploadStatus
-                        logger.dbg("Wallabag:uploadStatuses: - but has not been finished yet")
-                    end -- if finished
-                end -- if has sidecar
-            end -- if not . or ..
+                            logger.dbg("Wallabag:uploadStatuses: - deleting locally as well")
+                            if self:deleteLocalArticle(entry_path) then
+                                local_articles[local_id] = nil
+                                count_local = count_local + 1
+                            end
+                        end -- if use local archive
+                    end -- if not skip
+                else -- not shouldUploadStatus
+                    logger.dbg("Wallabag:uploadStatuses: - but has not been finished yet")
+                end -- if finished
+            end -- if has sidecar
         end -- for entry
 
         UIManager:close(info)
@@ -1339,10 +1402,8 @@ end
 
 --- Move an article and its sidecar to archive_directory.
 -- @tparam string path Local path of the article
--- @treturn int 1 if successful, 0 if not
+-- @treturn bool Successfully archived or not.
 function Wallabag:archiveLocalArticle(path)
-    local result = 0
-
     -- Check if the archive directory is valid
     local dir_mode = lfs.attributes(self.archive_directory, "mode")
     if dir_mode == nil then
@@ -1352,17 +1413,23 @@ function Wallabag:archiveLocalArticle(path)
         UIManager:show(InfoMessage:new{
             text = _("The archive folder is not valid.\nPlease configure it in the settings."),
         })
-        return result
+        return false
     end
+
+    local result = false
 
     if lfs.attributes(path, "mode") == "file" then
         local _, file = util.splitFilePathName(path)
-        local new_path = FFIUtil.joinPath(self.archive_directory, file)
-        if FileManager:moveFile(path, new_path) then
-            result = 1
+        local new_path = ffiUtil.joinPath(self.archive_directory, file)
+        if path == new_path then -- Already archived
+            result = true
+        else
+            if FileManager:moveFile(path, new_path) then
+                result = true
+            end
+            DocSettings.updateLocation(path, new_path, false) -- move sdr
+            --- @todo Why is sdr copied instead of moved?
         end
-        DocSettings.updateLocation(path, new_path, false) -- move sdr
-        --- @todo Why is sdr copied instead of moved?
     end
 
     return result
@@ -1370,13 +1437,13 @@ end
 
 --- Delete an article and its sidecar locally.
 -- @tparam string path Local path of the article
--- @treturn int 1 if successful, 0 if not
+-- @treturn bool Successfully deleted or not.
 function Wallabag:deleteLocalArticle(path)
-    local result = 0
+    local result = false
 
     if lfs.attributes(path, "mode") == "file" then
         FileManager:deleteFile(path, true)
-        result = 1
+        result = true
     end
 
     return result
@@ -1409,6 +1476,37 @@ function Wallabag:getArticleID(path)
     return id
 end
 
+--- Find all files that represent Wallabag articles in specified directory and subdirectories.
+-- @tparam[opt=true] string Directory to search (defaults to base self.directory)
+-- @tparam[opt=true] table The table that's passed through recursively (nil to start)
+-- @treturn table Full paths of all articles, keyed by Wallabag ID.
+function Wallabag:getLocalArticles(dir, map)
+    if dir == nil then
+        dir = self.directory
+    end
+
+    if map == nil then
+        map = {}
+    end
+
+    for entry in lfs.dir(dir) do
+        if entry ~= "." and entry ~= ".." then
+            local entry_path = ffiUtil.joinPath(dir, entry)
+            local mode = lfs.attributes(entry_path, "mode")
+            if mode == "file" then
+                local local_id = self:getArticleID(entry)
+                if local_id ~= nil then
+                    map[local_id] = entry_path
+                end
+            elseif mode == "directory" and string.match(entry, "%.sdr$") == nil then
+                self:getLocalArticles(entry_path, map)
+            end
+        end
+    end
+
+    return map
+end
+
 function Wallabag:refreshFileManager()
     if FileManager.instance then
         FileManager.instance:onRefresh()
@@ -1435,7 +1533,7 @@ function Wallabag:setTagsDialog(touchmenu_instance, title, description, value, c
                     is_enter_default = true,
                     callback = function()
                         callback(self.tags_dialog:getInputText())
-                        self:saveSettings()
+                        self.updated = true
                         touchmenu_instance:updateItems()
                         UIManager:close(self.tags_dialog)
                     end,
@@ -1524,7 +1622,7 @@ Restart KOReader after editing the config file.]]), BD.dirpath(DataStorage:getSe
                         self.client_secret = myfields[3]
                         self.username      = myfields[4]
                         self.password      = myfields[5]
-                        self:saveSettings()
+                        self.updated = true
                         UIManager:close(self.settings_dialog)
                     end
                 },
@@ -1553,7 +1651,7 @@ function Wallabag:setArticlesPerSync(touchmenu_instance)
                     text = _("Apply"),
                     callback = function()
                         self.articles_per_sync = math.max(1, tonumber(self.articles_dialog:getInputText()) or self.articles_per_sync)
-                        self:saveSettings()
+                        self.updated = true
                         touchmenu_instance:updateItems()
                         UIManager:close(self.articles_dialog)
                     end,
@@ -1571,7 +1669,7 @@ function Wallabag:setDownloadDirectory(touchmenu_instance)
     require("ui/downloadmgr"):new{
         onConfirm = function(path)
             self.directory = path
-            self:saveSettings()
+            self.updated = true
             logger.dbg("Wallabag:setDownloadDirectory: set download directory to", self.directory)
             if touchmenu_instance then
                 touchmenu_instance:updateItems()
@@ -1585,7 +1683,7 @@ function Wallabag:setArchiveDirectory(touchmenu_instance)
     require("ui/downloadmgr"):new{
         onConfirm = function(path)
             self.archive_directory = path
-            self:saveSettings()
+            self.updated = true
             logger.dbg("Wallabag:setArchiveDirectory: set archive directory to", self.archive_directory)
             if touchmenu_instance then
                 touchmenu_instance:updateItems()
@@ -1615,7 +1713,7 @@ function Wallabag:setTimeoutValue(touchmenu_instance, title_text, current_value,
                         local new_value = tonumber(self.timeout_dialog:getInputText())
                         if new_value and new_value > 0 then
                             setter_func(new_value)
-                            self:saveSettings()
+                            self.updated = true
                             touchmenu_instance:updateItems()
                             UIManager:close(self.timeout_dialog)
                         else
@@ -1629,49 +1727,6 @@ function Wallabag:setTimeoutValue(touchmenu_instance, title_text, current_value,
     }
     UIManager:show(self.timeout_dialog)
     self.timeout_dialog:onShowKeyboard()
-end
-
-function Wallabag:saveSettings()
-    local tempsettings = {
-        server_url                    = self.server_url,
-        client_id                     = self.client_id,
-        client_secret                 = self.client_secret,
-        username                      = self.username,
-        password                      = self.password,
-        directory                     = self.directory,
-        filter_tag                    = self.filter_tag,
-        filter_starred                = self.filter_starred,
-        ignore_tags                   = self.ignore_tags,
-        auto_tags                     = self.auto_tags,
-        archive_finished              = self.archive_finished,
-        archive_read                  = self.archive_read,
-        archive_abandoned             = self.archive_abandoned,
-        delete_instead                = self.delete_instead,
-        auto_archive                  = self.auto_archive,
-        sync_remote_archive           = self.sync_remote_archive,
-        articles_per_sync             = self.articles_per_sync,
-        send_review_as_tags           = self.send_review_as_tags,
-        remove_finished_from_history  = self.remove_finished_from_history,
-        remove_read_from_history      = self.remove_read_from_history,
-        remove_abandoned_from_history = self.remove_abandoned_from_history,
-        download_original_document    = self.download_original_document,
-        offline_queue                 = self.offline_queue,
-        use_local_archive             = self.use_local_archive,
-        archive_directory             = self.archive_directory,
-        file_block_timeout            = self.file_block_timeout,
-        file_total_timeout            = self.file_total_timeout,
-        large_block_timeout           = self.large_block_timeout,
-        large_total_timeout           = self.large_total_timeout,
-    }
-
-    self.wb_settings:saveSetting("wallabag", tempsettings)
-    self.wb_settings:flush()
-end
-
-function Wallabag:readSettings()
-    local wb_settings = LuaSettings:open(DataStorage:getSettingsDir().."/wallabag.lua")
-    wb_settings:readSetting("wallabag", {})
-    return wb_settings
 end
 
 --- Handler for addWallabagArticle event.
@@ -1703,7 +1758,7 @@ end
 function Wallabag:onSynchronizeWallabag()
     local connect_callback = function()
         logger.dbg("Wallabag:onSynchronizeWallabag:connect_callback: downloading articles…")
-        self:downloadArticles()
+        self:downloadArticles(self:getLocalArticles())
         logger.dbg("Wallabag:onSynchronizeWallabag:connect_callback: refreshing file manager…")
         self:refreshFileManager()
     end
@@ -1724,7 +1779,7 @@ end
 
 function Wallabag:onUploadWallabagStatuses()
     local connect_callback = function()
-        self:uploadStatuses(false)
+        self:uploadStatuses(self:getLocalArticles(), false)
         self:refreshFileManager()
     end
 
@@ -1756,7 +1811,7 @@ end
 
 function Wallabag:addToOfflineQueue(article_url)
     table.insert(self.offline_queue, article_url)
-    self:saveSettings()
+    self.updated = true
     logger.dbg("Wallabag:addToOfflineQueue: added", article_url, "to queue")
 end
 

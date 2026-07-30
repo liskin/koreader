@@ -5,7 +5,6 @@ local Device = require("device")
 local Event = require("ui/event")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local PluginLoader = require("pluginloader")
-local Screensaver = require("ui/screensaver")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local dbg = require("dbg")
@@ -60,11 +59,7 @@ function ReaderMenu:init()
 
     self:registerKeyEvents()
 
-    if G_reader_settings:has("activate_menu") then
-        self.activation_menu = G_reader_settings:readSetting("activate_menu")
-    else
-        self.activation_menu = "swipe_tap"
-    end
+    self.activation_menu = G_reader_settings:readSetting("activate_menu") or "swipe_tap"
 
     -- delegate gesture listener to readerui, NOP our own
     self.ges_events = nil
@@ -182,13 +177,6 @@ end
 ReaderMenu.onReaderReady = ReaderMenu.initGesListener
 
 function ReaderMenu:setUpdateItemTable()
-    for _, widget in pairs(self.registered_widgets) do
-        local ok, err = pcall(widget.addToMainMenu, widget, self.menu_items)
-        if not ok then
-            logger.err("failed to register widget", widget.name, err)
-        end
-    end
-
     -- typeset tab
     self.menu_items.document_settings = {
         text = _("Document settings"),
@@ -299,28 +287,9 @@ Useful when used alongside 'Invert page turn taps and swipes'.]]),
     end
 
     if Device:supportsScreensaver() then
-        local screensaver_sub_item_table = dofile("frontend/ui/elements/screensaver_menu.lua")
-        table.insert(screensaver_sub_item_table, {
-            text = _("Do not show this book cover on sleep screen"),
-            enabled_func = function()
-                local screensaver_type = G_reader_settings:readSetting("screensaver_type")
-                return screensaver_type == "cover" or screensaver_type == "disable"
-            end,
-            checked_func = function()
-                return self.ui.doc_settings:isTrue("exclude_screensaver")
-            end,
-            callback = function()
-                if Screensaver.isExcluded(self.ui) then
-                    self.ui.doc_settings:makeFalse("exclude_screensaver")
-                else
-                    self.ui.doc_settings:makeTrue("exclude_screensaver")
-                end
-                self.ui:saveSettings()
-            end,
-        })
         self.menu_items.screensaver = {
             text = _("Sleep screen"),
-            sub_item_table = screensaver_sub_item_table,
+            sub_item_table = dofile("frontend/ui/elements/screensaver_menu.lua"),
         }
     end
 
@@ -368,6 +337,13 @@ Useful when used alongside 'Invert page turn taps and swipes'.]]),
         end
     }
 
+    for _, widget in ipairs(self.registered_widgets) do
+        local ok, err = pcall(widget.addToMainMenu, widget, self.menu_items)
+        if not ok then
+            logger.err("failed to register widget", widget.name, err)
+        end
+    end
+
     -- NOTE: This is cached via require for ui/plugin/insert_menu's sake...
     local order = require("ui/elements/reader_menu_order")
 
@@ -377,7 +353,7 @@ end
 dbg:guard(ReaderMenu, 'setUpdateItemTable',
     function(self)
         local mock_menu_items = {}
-        for _, widget in pairs(self.registered_widgets) do
+        for _, widget in ipairs(self.registered_widgets) do
             -- make sure addToMainMenu works in debug mode
             widget:addToMainMenu(mock_menu_items)
         end
@@ -412,7 +388,7 @@ function ReaderMenu:exitOrRestart(callback, force)
 end
 
 function ReaderMenu:onShowMenu(tab_index, do_not_show)
-    self.ui.highlight:onStopHighlightIndicator(true) -- stop any text selection in progress, if applicable
+    self.ui.keyselection:stopHighlightIndicator(true) -- stop any text selection in progress, if applicable
     if self.tab_item_table == nil then
         self:setUpdateItemTable()
     end

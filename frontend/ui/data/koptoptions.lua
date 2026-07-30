@@ -507,14 +507,73 @@ Some of the other settings are only available when reflow mode is enabled.]]),
                 },
             },
             {
+                name = "saturation",
+                name_text = _("Saturation"),
+                buttonprogress = true,
+                values = {0.2, 0.5, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0},
+                default_pos = 3,
+                default_value = G_defaults:readSetting("DKOPTREADER_CONFIG_SATURATION"),
+                event = "SaturationUpdate",
+                args =   {0.2, 0.5, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0},
+                labels = {0.2, 0.5, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0},
+                show = Device:hasColorScreen(),
+                enabled_func = function()
+                    return Device.screen:isColorEnabled()
+                end,
+                name_text_hold_callback = optionsutil.showValues,
+                more_options = true,
+                more_options_param = {
+                    value_step = 0.1, value_hold_step = 0.2,
+                    value_min = 0.2, value_max = 2.0,
+                    precision = "%.1f",
+                },
+                help_text = _([[Adjust color saturation for rendered pages.
+Lower values desaturate colors, 1.0 keeps original colors, and higher values increase color intensity.]]),
+            },
+            {
+                name = "white_threshold",
+                name_text = _("White Threshold"),
+                buttonprogress = true,
+                values = {255, 224, 192, 160, 128, 96, 64, 32},
+                default_pos = 1,
+                default_value = G_defaults:readSetting("DKOPTREADER_CONFIG_WHITE_THRESHOLD"),
+                event = "WhiteThresholdUpdate",
+                args =   {255, 224, 192, 160, 128, 96, 64, 32},
+                labels = {255, 224, 192, 160, 128, 96, 64, 32},
+                name_text_hold_callback = optionsutil.showValues,
+                more_options = true,
+                more_options_param = {
+                    value_step = 1, value_hold_step = 5,
+                    value_min = 0, value_max = 255,
+                },
+                help_text = _([[Render everything above the threshold white.]]),
+            },
+            {
                 name = "page_opt",
                 name_text = _("Dewatermark"),
                 toggle = {C_("Dewatermark", "off"), C_("Dewatermark", "on")},
                 values = {0, 1},
                 default_value = 0,
+                enabled_func = function(configurable)
+                    return optionsutil.enableIfEquals(configurable, "white_threshold", 255)
+                end,
                 name_text_hold_callback = optionsutil.showValues,
                 help_text = _([[Remove watermarks from the rendered document.
 This can also be used to remove some gray background or to convert a grayscale or color document to black & white and get more contrast for easier reading.]]),
+            },
+            {
+                name = "background_cleanup",
+                name_text = _("Background Cleanup"),
+                toggle = {C_("Background Cleanup", "off"), C_("Background Cleanup", "on")},
+                values = {0, 1},
+                default_value = 0,
+                args = {0, 1},
+                show_func = function(configurable, document)
+                    return document.is_pdf == true
+                end,
+                name_text_hold_callback = optionsutil.showValues,
+                help_text = _([[Render the essentials in black and white, ignoring extra data for better contrast and faster rendering.
+Useful for Internet Archive PDF documents.]]),
             },
             {
                 name = "hw_dithering",
